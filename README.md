@@ -53,6 +53,10 @@ OPTIONS:
     -t, --title <title>              Title for summary [default: Summary]
 ```
 
+## mdBook Preprocessor
+
+If you want to use this as an mdBook preprocessor (no separate build step needed), check out [mdbook-yml-header](https://github.com/dvogt23/mdbook-yml-header) - an mdBook preprocessor that removes yml front-matter from your markdown files.
+
 ## Contributing
 
 Feel free to open a pull request or an issue to contribute to this project.
