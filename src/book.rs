@@ -30,21 +30,23 @@ pub struct Chapter {
 }
 
 impl Chapter {
-    pub fn new(name: String, entries: &[String], mdheader: bool) -> Chapter {
-        let mut chapter = Chapter {
-            name,
-            files: vec![],
-            chapter: vec![],
-            mdheader,
-        };
+        pub fn new(name: String, entries: &[String], mdheader: bool) -> Chapter {
+            
 
-        for entry in entries {
-            chapter.add_entry(entry.split('/').collect::<Vec<_>>(), "");
+            let mut chapter = Chapter {
+                name,
+                files: vec![],
+                chapter: vec![],
+                mdheader,
+            };
+
+            for entry in entries {
+                chapter.add_entry(entry.split('/').collect::<Vec<_>>(), "");
+            }
+
+            chapter.sort_contents();
+            chapter
         }
-
-        chapter.sort_contents();
-        chapter
-    }
 
         fn add_entry(&mut self, entry: Vec<&str>, root: &str) {
         let new_root = match root {
@@ -172,23 +174,23 @@ impl Chapter {
     }
 }
 
-fn parse_sort_key(filename: &str) -> (u32, u32) {
+fn parse_sort_key(filename: &str) -> (i32, i32) {
     if let Some((vol, chap, _, _)) = parse_filename(filename) {
         (vol, chap)
     } else {
-        (u32::MAX, u32::MAX)
+        (i32::MAX, i32::MAX)
     }
 }
 
-fn parse_filename(filename: &str) -> Option<(u32, u32, String, String)> {
+fn parse_filename(filename: &str) -> Option<(i32, i32, String, String)> {
     let path = Path::new(filename);
     let stem = path.file_stem()?.to_str()?;
     let parts: Vec<&str> = stem.split('.').collect();
     if parts.len() < 3 {
         return None;
     }
-    let volume = parts[0].parse::<u32>().ok()?;
-    let chapter = parts[1].parse::<u32>().ok()?;
+    let volume = parts[0].parse::<i32>().ok()?;
+    let chapter = parts[1].parse::<i32>().ok()?;
     let title = parts[2..].join(".");
     Some((volume, chapter, title, filename.to_string()))
 }
