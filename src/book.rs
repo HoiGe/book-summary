@@ -42,11 +42,11 @@ impl Chapter {
             chapter.add_entry(entry.split('/').collect::<Vec<_>>(), "");
         }
 
+        chapter.sort_contents();
         chapter
     }
 
-    // This is a recursive function to add new chapters and files to an existing chapter.
-    fn add_entry(&mut self, entry: Vec<&str>, root: &str) {
+        fn add_entry(&mut self, entry: Vec<&str>, root: &str) {
         let new_root = match root {
             "" => entry[0].to_string(),
             _ => format!("{}/{}", root, entry[0]),
@@ -63,7 +63,6 @@ impl Chapter {
                     mdheader: false,
                 };
                 chapter.add_entry(entry[1..].to_owned(), &new_root);
-
                 self.chapter.push(chapter);
             }
         } else {
@@ -71,38 +70,36 @@ impl Chapter {
         }
     }
 
-    pub fn get_summary_file(&self, format: &Format, prefered_chapter: &Option<Vec<String>>, mdheader: bool) -> String {
-        // create markdown summary file
-        /*
-        gitbook format:
-        # Summary
+    fn sort_contents(&mut self) {
+        self.files.sort_by(|a, b| {
+            let a_key = parse_sort_key(a);
+            let b_key = parse_sort_key(b);
+            a_key.cmp(&b_key)
+        });
 
-        * [First page's title](page1/README.md)
-            * [Some child page](page1/page1-1.md)
-            * [Some other child page](part1/page1-2.md)
-        * [Second page's title](page2/README.md)
-            * [Some child page](page2/page2-1.md)
-            * [Some other child page](part2/page2-2.md)
+        self.chapter.sort_by(|a, b| a.name.cmp(&b.name));
 
-        mdbook format:
-        # Summary
+        for child in &mut self.chapter {
+            child.sort_contents();
+        }
+    }
 
-        - [mdBook](README.md)
-        - [Command Line Tool](cli/README.md)
-            - [init](cli/init.md)
-            - [build](cli/build.md)
-            - [watch](cli/watch.md)
-            - [serve](cli/serve.md)
-            - [test](cli/test.md)
-            - [clean](cli/clean.md)
-        */
-
+    pub fn get_summary_file(
+        &self,
+        format: &Format,
+        prefered_chapter: &Option<Vec<String>>,
+        mdheader: bool,
+    ) -> String {
         let indent_level = 0;
         let mut summary: String = "".to_string();
         summary.push_str(&format!("# {}\n\n", self.name));
         match format {
-            Format::Md(list_char) => summary += &print_files(&self.files, list_char, indent_level, mdheader),
-            Format::Git(list_char) => summary += &print_files(&self.files, list_char, indent_level, mdheader),
+            Format::Md(list_char) => {
+                summary += &print_files(&self.files, list_char, indent_level, mdheader)
+            }
+            Format::Git(list_char) => {
+                summary += &print_files(&self.files, list_char, indent_level, mdheader)
+            }
         }
 
         // first prefered chapters (sort)
@@ -155,16 +152,14 @@ impl Chapter {
         } else {
             match format {
                 Format::Md(_) => summary.push_str(&format!(
-                        "{} [{}]({}.md)\n",
-                        list_char,
-                        titlecase(&self.name),
-                        titlecase(&self.name)
+                    "{} [{}]({}.md)\n",
+                    list_char,
+                    titlecase(&self.name),
+                    titlecase(&self.name)
                 )),
-                Format::Git(_) => summary.push_str(&format!(
-                        "{} {}\n",
-                        list_char,
-                        titlecase(&self.name)
-                )),
+                Format::Git(_) => {
+                    summary.push_str(&format!("{} {}\n", list_char, titlecase(&self.name)))
+                }
             }
         }
 
@@ -177,15 +172,36 @@ impl Chapter {
     }
 }
 
+fn parse_sort_key(filename: &str) -> (u32, u32) {
+    if let Some((vol, chap, _, _)) = parse_filename(filename) {
+        (vol, chap)
+    } else {
+        (u32::MAX, u32::MAX)
+    }
+}
+
+fn parse_filename(filename: &str) -> Option<(u32, u32, String, String)> {
+    let path = Path::new(filename);
+    let stem = path.file_stem()?.to_str()?;
+    let parts: Vec<&str> = stem.split('.').collect();
+    if parts.len() < 3 {
+        return None;
+    }
+    let volume = parts[0].parse::<u32>().ok()?;
+    let chapter = parts[1].parse::<u32>().ok()?;
+    let title = parts[2..].join(".");
+    Some((volume, chapter, title, filename.to_string()))
+}
+
 fn print_files(files: &[String], list_char: &char, indent: usize, mdheader: bool) -> String {
     files
         .iter()
         .filter(|f| !f.to_lowercase().ends_with("/readme.md"))
         .map(|f| {
             let title = if mdheader {
-                get_first_header(&f).unwrap_or_else(|| titlecase(Path::new(&f).file_stem().unwrap().to_str().unwrap()))
+                get_first_header(&f).unwrap_or_else(|| get_display_title(f))
             } else {
-                titlecase(Path::new(&f).file_stem().unwrap().to_str().unwrap())
+                get_display_title(f)
             };
             format!(
                 "{}{} [{}]({})\n",
@@ -199,26 +215,34 @@ fn print_files(files: &[String], list_char: &char, indent: usize, mdheader: bool
         .join("")
 }
 
-/// Extract the first H1 header (# Header) from a markdown file
+fn get_display_title(file_path: &str) -> String {
+    if parse_filename(file_path).is_some() {
+        Path::new(file_path)
+            .file_stem()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string()
+    } else {
+        titlecase(Path::new(file_path).file_stem().unwrap().to_str().unwrap())
+    }
+}
+
 fn get_first_header(file_path: &str) -> Option<String> {
     let full_path = Path::new(file_path);
     let content = std::fs::read_to_string(full_path).ok()?;
-    content.lines()
+    content
+        .lines()
         .find(|line| line.starts_with("# "))
         .map(|line| line.trim_start_matches("# ").trim().to_string())
 }
 
-/// Percent-encode a path for CommonMark spec compliance.
-/// CommonMark doesn't allow spaces and certain special characters in link destinations
-/// unless they are percent-encoded or wrapped in angle brackets.
 fn percent_encode_path(path: &str) -> String {
-    let needs_encoding = path.chars().any(|c| {
-        c.is_whitespace() || c == '#' || c == '[' || c == ']' || c == '<' || c == '>'
-    });
+    let needs_encoding = path
+        .chars()
+        .any(|c| c.is_whitespace() || c == '#' || c == '[' || c == ']' || c == '<' || c == '>');
 
     if needs_encoding {
-        // Use angle brackets syntax for better readability: [text](<path>)
-        // This is CommonMark compliant and more readable than percent-encoding
         format!("<{}>", path)
     } else {
         path.to_string()
@@ -230,27 +254,49 @@ mod tests {
     use super::*;
 
     #[test]
-    fn file_print_test() {
-        let expected = r#"- [WritingIsGood](part1/WritingIsGood.md)
-- [GitbookIsNice](part1/GitbookIsNice.md)
-"#;
-        let input = vec![
-            "part1/README.md".to_string(),
-            "part1/WritingIsGood.md".to_string(),
-            "part1/GitbookIsNice.md".to_string(),
+    fn parse_filename_test() {
+        let filename = "0.1.131313.md";
+        let (vol, chap, title, _) = parse_filename(filename).unwrap();
+        assert_eq!(vol, 0);
+        assert_eq!(chap, 1);
+        assert_eq!(title, "131313");
+    }
+
+    #[test]
+    fn print_files_test() {
+        let files = vec![
+            "0.1.ABcdc.md".to_string(),
+            "0.2.BcDAc.md".to_string(),
+            "0.10.bbdac.md".to_string(),
         ];
-        assert_eq!(expected, print_files(&input, &'-', 0, false));
+        let expected = r#"- [0.1.ABcdc](0.1.ABcdc.md)
+- [0.2.BcDAc](0.2.BcDAc.md)
+- [0.10.bbdac](0.10.bbdac.md)
+"#;
+        assert_eq!(expected, print_files(&files, &'-', 0, false));
     }
 
     #[test]
     fn percent_encode_path_test() {
         // No encoding needed
-        assert_eq!("normal/path/file.md", percent_encode_path("normal/path/file.md"));
+        assert_eq!(
+            "normal/path/file.md",
+            percent_encode_path("normal/path/file.md")
+        );
         // Space needs encoding (angle brackets)
-        assert_eq!("<path with spaces/file.md>", percent_encode_path("path with spaces/file.md"));
+        assert_eq!(
+            "<path with spaces/file.md>",
+            percent_encode_path("path with spaces/file.md")
+        );
         // Hash needs encoding
-        assert_eq!("<path#hash/file.md>", percent_encode_path("path#hash/file.md"));
+        assert_eq!(
+            "<path#hash/file.md>",
+            percent_encode_path("path#hash/file.md")
+        );
         // Multiple special chars
-        assert_eq!("<path [special]/file.md>", percent_encode_path("path [special]/file.md"));
+        assert_eq!(
+            "<path [special]/file.md>",
+            percent_encode_path("path [special]/file.md")
+        );
     }
 }
