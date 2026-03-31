@@ -149,7 +149,7 @@ impl Chapter {
             summary += &format!(
                 "{} [{}]({})\n",
                 list_char,
-                make_title_case(&self.name),
+                titlecase(&self.name),
                 percent_encode_path(readme)
             )
         } else {
@@ -157,12 +157,12 @@ impl Chapter {
                 Format::Md(_) => summary.push_str(&format!(
                         "{} [{}](#)\n",
                         list_char,
-                        make_title_case(&self.name)
+                        titlecase(&self.name)
                 )),
                 Format::Git(_) => summary.push_str(&format!(
                         "{} {}\n",
                         list_char,
-                        make_title_case(&self.name)
+                        titlecase(&self.name)
                 )),
             }
         }
@@ -182,9 +182,9 @@ fn print_files(files: &[String], list_char: &char, indent: usize, mdheader: bool
         .filter(|f| !f.to_lowercase().ends_with("/readme.md"))
         .map(|f| {
             let title = if mdheader {
-                get_first_header(&f).unwrap_or_else(|| make_title_case(Path::new(&f).file_stem().unwrap().to_str().unwrap()))
+                get_first_header(&f).unwrap_or_else(|| titlecase(Path::new(&f).file_stem().unwrap().to_str().unwrap()))
             } else {
-                make_title_case(Path::new(&f).file_stem().unwrap().to_str().unwrap())
+                titlecase(Path::new(&f).file_stem().unwrap().to_str().unwrap())
             };
             format!(
                 "{}{} [{}]({})\n",
