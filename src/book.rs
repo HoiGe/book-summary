@@ -155,8 +155,9 @@ impl Chapter {
         } else {
             match format {
                 Format::Md(_) => summary.push_str(&format!(
-                        "{} [{}](#)\n",
+                        "{} [{}]({}.md)\n",
                         list_char,
+                        titlecase(&self.name),
                         titlecase(&self.name)
                 )),
                 Format::Git(_) => summary.push_str(&format!(
@@ -224,26 +225,9 @@ fn percent_encode_path(path: &str) -> String {
     }
 }
 
-fn make_title_case(name: &str) -> String {
-    titlecase(
-        &name
-            .chars()
-            .skip_while(|c| !c.is_alphabetic())
-            .map(|c| if ['_', '-'].contains(&c) { ' ' } else { c })
-            .collect::<String>(),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn titlecase_test() {
-        assert_eq!("Chapter 1", make_title_case("1-chapter_1"));
-        assert_eq!("Chapter 23", make_title_case("chapter_23"));
-        assert_eq!("Chapter 25", make_title_case("chapter-25"));
-    }
 
     #[test]
     fn file_print_test() {
