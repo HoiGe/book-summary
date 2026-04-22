@@ -153,12 +153,22 @@ impl Chapter {
             )
         } else {
             match format {
-                Format::Md(_) => summary.push_str(&format!(
-                    "{} [{}]({}.md)\n",
-                    list_char,
-                    titlecase(&self.name),
-                    titlecase(&self.name)
-                )),
+                Format::Md(_) => {
+                    if titlecase(&self.name).to_lowercase().contains("markdown") {
+                        summary.push_str(&format!(
+                        "{} [{}]()\n",
+                        list_char,
+                        titlecase(&self.name)
+                        ))
+                    } else {
+                        summary.push_str(&format!(
+                        "{} [{}]({}.md)\n",
+                        list_char,
+                        titlecase(&self.name),
+                        titlecase(&self.name)
+                        ))
+                    }
+                },
                 Format::Git(_) => {
                     summary.push_str(&format!("{} {}\n", list_char, titlecase(&self.name)))
                 }
@@ -205,6 +215,7 @@ fn print_files(files: &[String], list_char: &char, indent: usize, mdheader: bool
             } else {
                 get_display_title(f)
             };
+            
             format!(
                 "{}{} [{}]({})\n",
                 " ".repeat(4 * indent),
