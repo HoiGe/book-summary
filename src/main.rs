@@ -610,21 +610,21 @@ mod tests {
     }
 
     #[test]
-    fn parse_config_accepts_real_mdbook_config_with_empty_src() -> io::Result<()> {
-        let dir = test_dir("real-mdbook-config")?;
+    fn parse_config_accepts_mdbook_config_with_empty_src() -> io::Result<()> {
+        let dir = test_dir("empty-src-mdbook-config")?;
         let booktoml = dir.join("book.toml");
         std::fs::write(
             &booktoml,
             r#"[book]
-authors = ["Moon-of-Noon"]
+authors = ["Example Author"]
 language = "zh-CN"
 src = ""
-title = "Witchgci"
-site-url = "/witchgci/"
+title = "Example Book"
+site-url = "/example-book/"
 
 [output.html]
 no-section-label = true
-git-repository-url = "https://github.com/Moon-of-Noon/witchgci"
+git-repository-url = "https://example.com/example/book"
 
 [output.html.print]
 enable = false
@@ -634,7 +634,7 @@ enable = true
 level = 10
 
 [preprocessor.chapter-list]
-ignored-files = ["正文卷/卷0-你自南城来/markdown.md"]
+ignored-files = ["chapters/volume-0/markdown.md"]
 "#,
         )?;
 
@@ -642,7 +642,7 @@ ignored-files = ["正文卷/卷0-你自南城来/markdown.md"]
         assert!(parse_config_file(&booktoml.to_string_lossy(), &mut opt).is_ok());
 
         assert_eq!(PathBuf::from("."), opt.dir);
-        assert_eq!("Witchgci", opt.title);
+        assert_eq!("Example Book", opt.title);
         Ok(())
     }
 

@@ -417,18 +417,18 @@ mod tests {
     #[test]
     fn md_same_named_file_is_used_as_child_chapter_link_only_once() {
         let input = files(&[
-            "正文卷/卷1-七彩阳光/readme.md",
-            "正文卷/卷1-七彩阳光/markdown.md",
-            "正文卷/卷1-七彩阳光/markdown/1.0.七月上.md",
+            "volume/chapter/readme.md",
+            "volume/chapter/markdown.md",
+            "volume/chapter/markdown/intro.md",
         ]);
         let book = Chapter::new("Summary".to_string(), &input, false);
 
         let expected = r#"# Summary
 
-- [正文卷](正文卷.md)
-    - [卷1-七彩阳光](正文卷/卷1-七彩阳光/readme.md)
-        - [Markdown](正文卷/卷1-七彩阳光/markdown.md)
-            - [1.0.七月上](正文卷/卷1-七彩阳光/markdown/1.0.七月上.md)
+- [Volume](volume.md)
+    - [Chapter](volume/chapter/readme.md)
+        - [Markdown](volume/chapter/markdown.md)
+            - [Intro](volume/chapter/markdown/intro.md)
 "#;
 
         assert_eq!(
