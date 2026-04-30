@@ -1,22 +1,22 @@
+use crate::sort::{compare_paths, parse_filename};
 use std::path::Path;
 use std::str::FromStr;
-use std::string::ParseError;
 use titlecase::titlecase;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Format {
     Md(char),
     Git(char),
 }
 
 impl FromStr for Format {
-    type Err = ParseError;
+    type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "md" => Ok(Format::Md('-')),
             "git" => Ok(Format::Git('*')),
-            _ => panic!("Error: Invalid format {}", s),
+            _ => Err(format!("不支持的格式：{}", s)),
         }
     }
 }
@@ -71,11 +71,7 @@ impl Chapter {
     }
 
     fn sort_contents(&mut self) {
-        self.files.sort_by(|a, b| {
-            let a_key = parse_sort_key(a);
-            let b_key = parse_sort_key(b);
-            a_key.cmp(&b_key)
-        });
+        self.files.sort_by(|a, b| compare_paths(a, b));
 
         self.chapter.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -93,14 +89,17 @@ impl Chapter {
         let indent_level = 0;
         let mut summary: String = "".to_string();
         summary.push_str(&format!("# {}\n\n", self.name));
-        match format {
-            Format::Md(list_char) => {
-                summary += &print_files(&self.files, list_char, indent_level, mdheader)
-            }
-            Format::Git(list_char) => {
-                summary += &print_files(&self.files, list_char, indent_level, mdheader)
-            }
-        }
+        let list_char = match format {
+            Format::Md(list_char) | Format::Git(list_char) => list_char,
+        };
+        let linked_files = self.linked_child_files(format);
+        summary += &print_files_excluding(
+            &self.files,
+            &linked_files,
+            list_char,
+            indent_level,
+            mdheader,
+        );
 
         // first prefered chapters (sort)
         if let Some(chapter_names) = prefered_chapter {
@@ -110,51 +109,56 @@ impl Chapter {
                     .iter()
                     .find(|c| c.name.to_lowercase() == chapter_name.to_lowercase())
                 {
-                    summary += &chapter.create_tree_for_summary(&format, indent_level, mdheader);
+                    let link = self.link_file_for_child(chapter, format);
+                    summary +=
+                        &chapter.create_tree_for_summary(format, indent_level, mdheader, link);
                 }
             }
         }
 
         for c in &self.chapter {
-            if let Some(chapter_names) = prefered_chapter {
-                if chapter_names
-                    .iter()
-                    .map(|n| n.to_lowercase())
-                    .any(|x| x == c.name.to_lowercase())
-                {
-                    continue;
-                }
+            if is_preferred_chapter(c, prefered_chapter) {
+                continue;
             }
 
-            summary += &c.create_tree_for_summary(&format, indent_level, mdheader);
+            let link = self.link_file_for_child(c, format);
+            summary += &c.create_tree_for_summary(format, indent_level, mdheader, link);
         }
         summary
     }
 
-    fn create_tree_for_summary(&self, format: &Format, indent: usize, mdheader: bool) -> String {
+    fn create_tree_for_summary(
+        &self,
+        format: &Format,
+        indent: usize,
+        mdheader: bool,
+        link_override: Option<&str>,
+    ) -> String {
         let mut summary: String = " ".repeat(4 * indent);
         let list_char = match format {
             Format::Md(c) => c,
             Format::Git(c) => c,
         };
 
-        if let Some(readme) = self
-            .files
-            .iter()
-            .find(|f| f.to_lowercase().ends_with("/readme.md"))
-        {
+        if let Some(link) = link_override.or_else(|| {
+            self.files
+                .iter()
+                .find(|f| f.to_lowercase().ends_with("/readme.md"))
+                .map(String::as_str)
+        }) {
             summary += &format!(
                 "{} [{}]({})\n",
                 list_char,
                 titlecase(&self.name),
-                percent_encode_path(readme)
+                percent_encode_path(link)
             )
         } else {
             match format {
                 Format::Md(_) => {
-                    let link = self
-                        .infer_chapter_link()
-                        .unwrap_or_else(|| format!("{}.md", titlecase(&self.name)));
+                    let link = match self.infer_chapter_link() {
+                        Some(link) => link,
+                        None => format!("{}.md", titlecase(&self.name)),
+                    };
                     summary.push_str(&format!(
                         "{} [{}]({})\n",
                         list_char,
@@ -168,12 +172,36 @@ impl Chapter {
             }
         }
 
-        summary += &print_files(&self.files, list_char, indent + 1, mdheader);
+        let linked_files = self.linked_child_files(format);
+        summary +=
+            &print_files_excluding(&self.files, &linked_files, list_char, indent + 1, mdheader);
 
         for c in &self.chapter {
-            summary += &c.create_tree_for_summary(&format, indent + 1, mdheader);
+            let link = self.link_file_for_child(c, format);
+            summary += &c.create_tree_for_summary(format, indent + 1, mdheader, link);
         }
         summary
+    }
+
+    fn link_file_for_child(&self, child: &Chapter, format: &Format) -> Option<&str> {
+        if !matches!(format, Format::Md(_)) {
+            return None;
+        }
+
+        self.files
+            .iter()
+            .find(|file| match file_stem(file) {
+                Some(stem) => stem.eq_ignore_ascii_case(&child.name),
+                None => false,
+            })
+            .map(String::as_str)
+    }
+
+    fn linked_child_files(&self, format: &Format) -> Vec<&str> {
+        self.chapter
+            .iter()
+            .filter_map(|child| self.link_file_for_child(child, format))
+            .collect()
     }
 
     fn infer_chapter_link(&self) -> Option<String> {
@@ -194,34 +222,32 @@ impl Chapter {
     }
 }
 
-fn parse_sort_key(filename: &str) -> (i32, i32) {
-    if let Some((vol, chap, _, _)) = parse_filename(filename) {
-        (vol, chap)
-    } else {
-        (i32::MAX, i32::MAX)
+fn is_preferred_chapter(chapter: &Chapter, preferred_chapter: &Option<Vec<String>>) -> bool {
+    match preferred_chapter {
+        Some(names) => names
+            .iter()
+            .any(|name| name.eq_ignore_ascii_case(&chapter.name)),
+        None => false,
     }
 }
 
-fn parse_filename(filename: &str) -> Option<(i32, i32, String, String)> {
-    let path = Path::new(filename);
-    let stem = path.file_stem()?.to_str()?;
-    let parts: Vec<&str> = stem.split('.').collect();
-    if parts.len() < 3 {
-        return None;
-    }
-    let volume = parts[0].parse::<i32>().ok()?;
-    let chapter = parts[1].parse::<i32>().ok()?;
-    let title = parts[2..].join(".");
-    Some((volume, chapter, title, filename.to_string()))
-}
-
-fn print_files(files: &[String], list_char: &char, indent: usize, mdheader: bool) -> String {
+fn print_files_excluding(
+    files: &[String],
+    excluded_files: &[&str],
+    list_char: &char,
+    indent: usize,
+    mdheader: bool,
+) -> String {
     files
         .iter()
         .filter(|f| !f.to_lowercase().ends_with("/readme.md"))
+        .filter(|f| !excluded_files.contains(&f.as_str()))
         .map(|f| {
             let title = if mdheader {
-                get_first_header(&f).unwrap_or_else(|| get_display_title(f))
+                match get_first_header(f) {
+                    Some(header) => header,
+                    None => get_display_title(f),
+                }
             } else {
                 get_display_title(f)
             };
@@ -231,7 +257,7 @@ fn print_files(files: &[String], list_char: &char, indent: usize, mdheader: bool
                 " ".repeat(4 * indent),
                 list_char,
                 title,
-                percent_encode_path(&f)
+                percent_encode_path(f)
             )
         })
         .collect::<Vec<String>>()
@@ -239,23 +265,23 @@ fn print_files(files: &[String], list_char: &char, indent: usize, mdheader: bool
 }
 
 fn get_display_title(file_path: &str) -> String {
+    let stem = match file_stem(file_path) {
+        Some(stem) => stem,
+        None => file_path.to_string(),
+    };
+
     if parse_filename(file_path).is_some() {
-        Path::new(file_path)
-            .file_stem()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string()
+        stem
     } else {
-        titlecase(
-            &Path::new(file_path)
-                .file_stem()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .replace('_', " "),
-        )
+        titlecase(&stem.replace('_', " "))
     }
+}
+
+fn file_stem(file_path: &str) -> Option<String> {
+    Path::new(file_path)
+        .file_stem()?
+        .to_str()
+        .map(str::to_string)
 }
 
 fn get_first_header(file_path: &str) -> Option<String> {
@@ -283,56 +309,47 @@ fn percent_encode_path(path: &str) -> String {
 mod tests {
     use super::*;
 
+    fn files(paths: &[&str]) -> Vec<String> {
+        paths.iter().map(|path| path.to_string()).collect()
+    }
+
     #[test]
-    fn parse_filename_test() {
-        let filename = "0.1.131313.md";
-        let (vol, chap, title, _) = parse_filename(filename).unwrap();
-        assert_eq!(vol, 0);
-        assert_eq!(chap, 1);
-        assert_eq!(title, "131313");
+    fn format_from_str_rejects_unknown_format() {
+        assert_eq!(Ok(Format::Md('-')), "md".parse::<Format>());
+        assert_eq!(Ok(Format::Git('*')), "git".parse::<Format>());
+        assert_eq!(
+            Err("不支持的格式：html".to_string()),
+            "html".parse::<Format>()
+        );
     }
 
     #[test]
     fn print_files_test() {
-        let files = vec![
-            "0.1.ABcdc.md".to_string(),
-            "0.2.BcDAc.md".to_string(),
-            "0.10.bbdac.md".to_string(),
-        ];
+        let files = files(&["0.1.ABcdc.md", "0.2.BcDAc.md", "0.10.bbdac.md"]);
         let expected = r#"- [0.1.ABcdc](0.1.ABcdc.md)
 - [0.2.BcDAc](0.2.BcDAc.md)
 - [0.10.bbdac](0.10.bbdac.md)
 "#;
-        assert_eq!(expected, print_files(&files, &'-', 0, false));
+        assert_eq!(expected, print_files_excluding(&files, &[], &'-', 0, false));
     }
 
     #[test]
     fn percent_encode_path_test() {
-        // No encoding needed
-        assert_eq!(
-            "normal/path/file.md",
-            percent_encode_path("normal/path/file.md")
-        );
-        // Space needs encoding (angle brackets)
-        assert_eq!(
-            "<path with spaces/file.md>",
-            percent_encode_path("path with spaces/file.md")
-        );
-        // Hash needs encoding
-        assert_eq!(
-            "<path#hash/file.md>",
-            percent_encode_path("path#hash/file.md")
-        );
-        // Multiple special chars
-        assert_eq!(
-            "<path [special]/file.md>",
-            percent_encode_path("path [special]/file.md")
-        );
+        let cases = [
+            ("normal/path/file.md", "normal/path/file.md"),
+            ("path with spaces/file.md", "<path with spaces/file.md>"),
+            ("path#hash/file.md", "<path#hash/file.md>"),
+            ("path [special]/file.md", "<path [special]/file.md>"),
+        ];
+
+        for (path, expected) in cases {
+            assert_eq!(expected, percent_encode_path(path));
+        }
     }
 
     #[test]
     fn md_chapter_links_keep_nested_directory_path() {
-        let input = vec!["A/A1/page.md".to_string()];
+        let input = files(&["A/A1/page.md"]);
         let book = Chapter::new("Summary".to_string(), &input, false);
 
         let expected = r#"# Summary
@@ -346,5 +363,61 @@ mod tests {
             expected,
             book.get_summary_file(&Format::Md('-'), &None, false)
         );
+    }
+
+    #[test]
+    fn md_markdown_named_chapter_uses_regular_link() {
+        let input = files(&["Markdown/intro.md"]);
+        let book = Chapter::new("Summary".to_string(), &input, false);
+
+        let expected = r#"# Summary
+
+- [Markdown](Markdown.md)
+    - [Intro](Markdown/intro.md)
+"#;
+
+        assert_eq!(
+            expected,
+            book.get_summary_file(&Format::Md('-'), &None, false)
+        );
+    }
+
+    #[test]
+    fn md_same_named_file_is_used_as_child_chapter_link_only_once() {
+        let input = files(&[
+            "volume/chapter/readme.md",
+            "volume/chapter/markdown.md",
+            "volume/chapter/markdown/intro.md",
+        ]);
+        let book = Chapter::new("Summary".to_string(), &input, false);
+
+        let expected = r#"# Summary
+
+- [Volume](volume.md)
+    - [Chapter](volume/chapter/readme.md)
+        - [Markdown](volume/chapter/markdown.md)
+            - [Intro](volume/chapter/markdown/intro.md)
+"#;
+
+        assert_eq!(
+            expected,
+            book.get_summary_file(&Format::Md('-'), &None, false)
+        );
+    }
+
+    #[test]
+    fn print_files_can_use_first_markdown_header() -> std::io::Result<()> {
+        let path = std::env::temp_dir().join(format!(
+            "book-summary-header-{}-{}.md",
+            std::process::id(),
+            "chapter"
+        ));
+        std::fs::write(&path, "# Header Title\n\nBody")?;
+
+        let path = path.to_string_lossy().to_string();
+        let expected = format!("- [Header Title]({})\n", path);
+
+        assert_eq!(expected, print_files_excluding(&[path], &[], &'-', 0, true));
+        Ok(())
     }
 }
