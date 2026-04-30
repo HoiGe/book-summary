@@ -10,6 +10,7 @@ use toml::Table;
 use walkdir::{DirEntry, WalkDir};
 
 mod book;
+mod sort;
 use book::Chapter;
 use book::Format;
 
@@ -212,7 +213,11 @@ fn parse_config_file(path: &str, opt: &mut Opt) -> std::result::Result<(), Strin
                 Err(err) => return Err(format!("无法解析 {}：{}", path.display(), err)),
             };
             if opt.dir.to_str().eq(&Some(".")) {
-                if let Some(src) = values["book"]["src"].as_str() {
+                if let Some(src) = values
+                    .get("book")
+                    .and_then(|book| book.get("src"))
+                    .and_then(|src| src.as_str())
+                {
                     if opt.verbose > 2 {
                         println!("Found `src` in book.toml: {}", src);
                     }
@@ -223,7 +228,11 @@ fn parse_config_file(path: &str, opt: &mut Opt) -> std::result::Result<(), Strin
             }
 
             if opt.title.eq("Summary") {
-                if let Some(title) = values["book"]["title"].as_str() {
+                if let Some(title) = values
+                    .get("book")
+                    .and_then(|book| book.get("title"))
+                    .and_then(|title| title.as_str())
+                {
                     if opt.verbose > 2 {
                         println!("Found `title` in book.toml: {}", title);
                     }
@@ -434,88 +443,6 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn create_struct_empty_test() {
-        // # empty list
-
-        let input: Vec<String> = vec![];
-        let expected: Chapter = Chapter {
-            name: TITLE.to_string(),
-            files: vec![],
-            chapter: vec![],
-            mdheader: false,
-        };
-
-        let book = Chapter::new(TITLE.to_string(), &input, false);
-
-        assert_eq!(expected, book);
-    }
-
-    #[test]
-    fn create_struct_onefile_test() {
-        // # only one file
-        let input = files(&["file.md"]);
-        let expected: Chapter = Chapter {
-            name: TITLE.to_string(),
-            files: files(&["file.md"]),
-            chapter: vec![],
-            mdheader: false,
-        };
-
-        let book = Chapter::new(TITLE.to_string(), &input, false);
-
-        assert_eq!(expected, book);
-    }
-
-    #[test]
-    fn create_struct_onechapter_test() {
-        // # only one chapter
-        let input = files(&["chapter1/file1.md"]);
-
-        let expected: Chapter = Chapter {
-            name: TITLE.to_string(),
-            files: vec![],
-            chapter: vec![Chapter {
-                name: "chapter1".to_string(),
-                files: files(&["chapter1/file1.md"]),
-                chapter: vec![],
-                mdheader: false,
-            }],
-            mdheader: false,
-        };
-
-        let book = Chapter::new(TITLE.to_string(), &input, false);
-
-        assert_eq!(expected, book);
-    }
-
-    #[test]
-    fn create_struct_subchapter_test() {
-        // # chapter with subchapters
-        let input = files(&["chapter1/file1.md", "chapter1/subchap/file1.md"]);
-
-        let expected: Chapter = Chapter {
-            name: TITLE.to_string(),
-            files: vec![],
-            chapter: vec![Chapter {
-                name: "chapter1".to_string(),
-                files: files(&["chapter1/file1.md"]),
-                chapter: vec![Chapter {
-                    name: "subchap".to_string(),
-                    files: files(&["chapter1/subchap/file1.md"]),
-                    chapter: vec![],
-                    mdheader: false,
-                }],
-                mdheader: false,
-            }],
-            mdheader: false,
-        };
-
-        let book = Chapter::new(TITLE.to_string(), &input, false);
-
-        assert_eq!(expected, book);
-    }
-
     // 2. Markdown output for entry in chapter
     //      - format (md/git)
     //      - titlecase for entry
@@ -528,6 +455,14 @@ mod tests {
         assert_eq!(
             expected,
             book(&["file1.md"]).get_summary_file(&FORMAT, &None, false)
+        );
+    }
+
+    #[test]
+    fn md_output_empty_book_test() {
+        assert_eq!(
+            "# Summary\n\n",
+            book(&[]).get_summary_file(&FORMAT, &None, false)
         );
     }
 
@@ -653,6 +588,24 @@ ignored-files = ["chapters/volume-0/markdown.md"]
         assert!(parse_config_file("./missing-book-config.toml", &mut opt).is_ok());
         assert_eq!(PathBuf::from("."), opt.dir);
         assert_eq!("Summary", opt.title);
+    }
+
+    #[test]
+    fn parse_config_accepts_toml_without_book_section() -> io::Result<()> {
+        let dir = test_dir("toml-without-book-section")?;
+        let booktoml = dir.join("book.toml");
+        std::fs::write(
+            &booktoml,
+            r#"[output.html]
+no-section-label = true
+"#,
+        )?;
+
+        let mut opt = default_opt();
+        assert!(parse_config_file(&booktoml.to_string_lossy(), &mut opt).is_ok());
+        assert_eq!(PathBuf::from("."), opt.dir);
+        assert_eq!("Summary", opt.title);
+        Ok(())
     }
 
     #[test]

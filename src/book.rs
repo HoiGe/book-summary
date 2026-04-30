@@ -1,3 +1,4 @@
+use crate::sort::{compare_paths, parse_filename};
 use std::path::Path;
 use std::str::FromStr;
 use titlecase::titlecase;
@@ -70,11 +71,7 @@ impl Chapter {
     }
 
     fn sort_contents(&mut self) {
-        self.files.sort_by(|a, b| {
-            let a_key = parse_sort_key(a);
-            let b_key = parse_sort_key(b);
-            a_key.cmp(&b_key)
-        });
+        self.files.sort_by(|a, b| compare_paths(a, b));
 
         self.chapter.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -226,32 +223,12 @@ impl Chapter {
 }
 
 fn is_preferred_chapter(chapter: &Chapter, preferred_chapter: &Option<Vec<String>>) -> bool {
-    preferred_chapter.as_ref().is_some_and(|names| {
-        names
+    match preferred_chapter {
+        Some(names) => names
             .iter()
-            .any(|name| name.eq_ignore_ascii_case(&chapter.name))
-    })
-}
-
-fn parse_sort_key(filename: &str) -> (i32, i32) {
-    if let Some((vol, chap, _, _)) = parse_filename(filename) {
-        (vol, chap)
-    } else {
-        (i32::MAX, i32::MAX)
+            .any(|name| name.eq_ignore_ascii_case(&chapter.name)),
+        None => false,
     }
-}
-
-fn parse_filename(filename: &str) -> Option<(i32, i32, String, String)> {
-    let path = Path::new(filename);
-    let stem = path.file_stem()?.to_str()?;
-    let parts: Vec<&str> = stem.split('.').collect();
-    if parts.len() < 3 {
-        return None;
-    }
-    let volume = parts[0].parse::<i32>().ok()?;
-    let chapter = parts[1].parse::<i32>().ok()?;
-    let title = parts[2..].join(".");
-    Some((volume, chapter, title, filename.to_string()))
 }
 
 fn print_files_excluding(
@@ -343,15 +320,6 @@ mod tests {
         assert_eq!(
             Err("不支持的格式：html".to_string()),
             "html".parse::<Format>()
-        );
-    }
-
-    #[test]
-    fn parse_filename_test() {
-        let filename = "0.1.131313.md";
-        assert_eq!(
-            Some((0, 1, "131313".to_string(), filename.to_string())),
-            parse_filename(filename)
         );
     }
 

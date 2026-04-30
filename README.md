@@ -67,6 +67,12 @@ If a folder and a Markdown file share the same name, such as `markdown.md` and `
     - [Intro](markdown/intro.md)
 ```
 
+## Sorting
+
+Files named with the `volume.chapter.title.md` pattern keep the highest-priority sort rule. For example, `0.2.chapter.md` sorts before `0.10.chapter.md`.
+
+Files that do not match that pattern use natural numeric sorting when their names contain Arabic or chapter-like Chinese numbers. For example, `第2章.md`, `第十章.md`, `第11章.md`, and `第二十章.md` are sorted by numeric value. Chinese number words are only treated as numbers when followed by chapter units (such as `章`, `节`, `回`, `卷`, or `话`) or when they appear at the start of a file name before a separator or the end, so names like `五十载人.md` stay in scan order. Plain file names without sortable numbers keep their existing scan order.
+
 ## Partial Updates with Markers
 
 Use `--marker` / `-k` to partially update a SUMMARY.md file. This keeps static sections (like a preamble or final words) intact while only regenerating the auto-generated content.
