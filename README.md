@@ -34,24 +34,37 @@ $ book-summary -n ./notes --sort tech personal
 ```
 
 ```sh
-USAGE:
-    book-summary [FLAGS] [OPTIONS]
+Usage: book-summary [OPTIONS]
 
-FLAGS:
-    -d, --debug        Activate debug mode
-    -h, --help         Prints help information
-    -m, --mdheader     Title from md file header?
-    -V, --version      Prints version information
-    -v, --verbose      Verbose mode (-v, -vv, -vvv)
-    -y, --overwrite    Overwrite existing SUMMARY.md file
+Options:
+  -d, --debug                    Activate debug mode
+  -v, --verbose...               Verbose mode (-v, -vv, -vvv)
+  -m, --mdheader                 Title from md file header?
+  -f, --format <FORMAT>          Format md/git book [default: md]
+  -t, --title <TITLE>            Title for summary [default: Summary]
+  -s, --sort <SORT>...           Start with following chapters (space seperate)
+  -o, --outputfile <OUTPUTFILE>  Output file [default: SUMMARY.md]
+  -n, --notesdir <DIR>           Notes dir where to parse all your notes from [default: .]
+  -y, --overwrite                Overwrite existing SUMMARY.md file
+  -k, --marker <MARKER>          Only update content between marker comments, keeping other sections intact
+  -h, --help                     Print help
+```
 
-OPTIONS:
-    -f, --format <format>            Format md/git book [default: md]
-    -k, --marker <marker>            Only update content between marker comments
-    -n, --notesdir <notesdir>        Notes dir where to parse all your notes from [default: ./]
-    -o, --outputfile <outputfile>    Output file [default: SUMMARY.md]
-    -s, --sort <sort>...             Start with following chapters
-    -t, --title <title>              Title for summary [default: Summary]
+## mdBook Links
+
+For mdBook output, directory chapters keep their nested path. For example, a file under `A/A1/page.md` generates a nested chapter link like:
+
+```markdown
+- [A](A.md)
+    - [A1](A/A1.md)
+        - [Page](A/A1/page.md)
+```
+
+If a folder and a Markdown file share the same name, such as `markdown.md` and `markdown/`, the file is used as the folder chapter link and is not emitted again as a duplicate child item:
+
+```markdown
+- [Markdown](markdown.md)
+    - [Intro](markdown/intro.md)
 ```
 
 ## Partial Updates with Markers
